@@ -655,6 +655,7 @@ If space is needed, filesystem is automatically extended by increment of 100MB.
 - `filesets` - filter on fileset name
 - `csv` - custom apar csv file
 - `path` - directory where the report is saved
+- `force` - if true, installed interim fixes will be automatically removed (default: false)
 - `clean` - clean temporary files and remove nim lpp_source resource (default: true)
 - `verbose` - save and display the report in verbose mode (default: false)
 - `check_only` - generate report only, no fixes are downloaded nor installed (default: false)

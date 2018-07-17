@@ -34,6 +34,7 @@ property :csv, String
 property :path, String
 property :verbose, [true, false], default: false
 property :clean, [true, false], default: true
+property :force, [true, false], default: false
 property :check_only, [true, false], default: false
 property :download_only, [true, false], default: false
 
@@ -112,9 +113,9 @@ def run_flrtvc(m, apar, filesets, csv, path, verbose)
     shell_out!("/usr/lpp/bos.sysmgt/nim/methods/c_rsh #{m} \"/usr/sbin/emgr -lv3\" > #{emgr_file}")
   end
 
-  # execute both compact and verbose flrtvc script
+  # execute flrtvc script (verbose if needed)
   out_c = shell_out!("/usr/bin/flrtvc.ksh -l #{lslpp_file} -e #{emgr_file} #{apar_s} #{filesets_s} #{csv_s}", environment: { 'LANG' => 'C' }).stdout
-  out_v = shell_out!("/usr/bin/flrtvc.ksh -l #{lslpp_file} -e #{emgr_file} #{apar_s} #{filesets_s} #{csv_s} -v", environment: { 'LANG' => 'C' }).stdout
+  out_v = shell_out!("/usr/bin/flrtvc.ksh -l #{lslpp_file} -e #{emgr_file} #{apar_s} #{filesets_s} #{csv_s} -v", environment: { 'LANG' => 'C' }).stdout if verbose
 
   # write report file
   unless path.nil?
@@ -419,6 +420,7 @@ action :patch do
   Chef::Log.debug("filesets=#{new_resource.filesets}")
   Chef::Log.debug("csv=#{new_resource.csv}")
   Chef::Log.debug("path=#{new_resource.path}")
+  Chef::Log.debug("force=#{new_resource.force}")
 
   check_flrtvc
 
@@ -433,6 +435,17 @@ action :patch do
   so.concat Mixlib::ShellOut.new("lsnim -t vios | cut -d' ' -f1 | sort").run_command.stdout.split
   target_list = expand_targets(new_resource.targets, so)
   Chef::Log.debug("target_list: #{target_list}")
+
+  # force interim fixes automatic removal
+  if property_is_set?(:force) && new_resource.force == true
+    target_list.each do |m|
+      fixes = list_fixes(m)
+      fixes.each do |fix|
+        remove_fix(m, fix)
+        Chef::Log.warn("Interim fix #{fix} has been automatically removed")
+      end
+    end
+  end
 
   # loop on clients
   target_list.each do |m|
