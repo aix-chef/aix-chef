@@ -318,6 +318,7 @@ rescue Errno::ENOSPC
   download(src, dst)
 rescue StandardError => e
   Chef::Log.warn("Propagating exception of type '#{e.class}' when downloading!")
+  ::File.delete(dst)
   raise e
 end
 
@@ -328,10 +329,12 @@ rescue Mixlib::ShellOut::ShellCommandFailed => e
     increase_filesystem(dest)
     untar(src, dest)
   else
+    ::File.delete(src)
     Chef::Log.warn("Propagating exception of type '#{e.class}' when untarring!")
     raise e
   end
 rescue StandardError => e
+  ::File.delete(src)
   Chef::Log.warn("Propagating exception of type '#{e.class}' when untarring!")
   raise e
 end
@@ -427,7 +430,8 @@ action :patch do
   puts ''
 
   # create directory based on date/time
-  base_dir = ::File.join(Chef::Config[:file_cache_path], Time.now.to_s.gsub(/[:\s-]/, '_'))
+#  base_dir = ::File.join(Chef::Config[:file_cache_path], Time.now.to_s.gsub(/[:\s-]/, '_'))
+  base_dir = path
   ::FileUtils.mkdir_p(base_dir)
 
   # build list of targets
