@@ -256,6 +256,9 @@ module AIX
     class MirrorError < StandardError
     end
 
+    class CmdError < StandardError
+    end
+
     class SpLevel
       include Comparable
       attr_reader :aix
@@ -457,6 +460,7 @@ module AIX
     #     N I M     #
     #################
     class Nim
+      require 'date'
       include AIX::PatchMgmt
 
       def exist?(resource)
@@ -603,6 +607,64 @@ module AIX
         end
         puts "Finish patching #{vios}."
         raise NimCustError, "Error: Command \"#{nim_s}\" returns above error!" unless exit_status.success?
+      end
+
+      # -----------------------------------------------------------------
+      # Get packaging date from fileset
+      #   master, and get their cstate.
+      #
+      #    return packaging date formatted as following
+      #    20180809050125 for "Thu Aug  9 05:01:25 CDT 2018"
+      #    raise CmdError in case of error
+      # -----------------------------------------------------------------
+      def get_pkg_date(lpp_source_dir, fileset)
+        pkg_date = ''
+        cmd_s = "/usr/sbin/emgr -d -e #{lpp_source_dir}/#{fileset} -v3 | /bin/grep -w 'PACKAGING DATE' | /bin/cut -c16-"
+        log_debug("get_pkg_date: #{cmd_s}")
+        Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+          stderr.each_line do |line|
+            STDERR.puts line
+            log_info("[STDERR] #{line.chomp}")
+          end
+          unless wait_thr.value.success?
+            stdout.each_line { |line| log_info("[STDOUT] #{line.chomp}") }
+            raise CmdError, "Error: Command \"#{cmd_s}\" returns above error!"
+          end
+
+          stdout.each_line do |line|
+            log_info("[STDOUT] #{line.chomp}")
+            # match "Thu Aug  9 05:01:25 CDT 2018"
+            next unless line =~ /^\D+\s(\D+)\s(\d+)\s(\d+):(\d+):(\d+)\s\D+(\d+)$/
+            date_h = Regexp.last_match(3)
+            date_m = Regexp.last_match(4)
+            date_s = Regexp.last_match(5)
+            dp = Date.parse(line)
+            pkg_date = dp.year.to_s + format('%02d', dp.mon) + format('%02d', dp.mday) + date_h + date_m + date_s
+          end
+        end
+        log_debug("get_pkg_date for: #{lpp_source_dir}/#{fileset} => #{pkg_date}")
+        pkg_date
+      end
+
+      #-----------------------------------------------------------------
+      # Sort fileset list by packaging date
+      #
+      #    return sorted list of fileset
+      #-----------------------------------------------------------------
+      def efix_sort_by_packaging_date(lpp_source_dir, filesets)
+        pkg_date_h = {}
+        efixes_t = []
+        filesets.each do |fileset|
+          begin
+            pkg_date_h[fileset] = get_pkg_date(lpp_source_dir, fileset)
+          rescue CmdError => e
+            log_debug("efix_sort_by_packaging_date -> get_pkg_date Error: #{e}")
+          end
+        end
+        pkg_date_h.sort_by { |_, date| date }.each do |key, _|
+          efixes_t << key
+        end
+        efixes_t.reverse!
       end
 
       # -----------------------------------------------------------------
