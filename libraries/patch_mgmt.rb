@@ -611,7 +611,6 @@ module AIX
 
       # -----------------------------------------------------------------
       # Get packaging date from fileset
-      #   master, and get their cstate.
       #
       #    return packaging date formatted as following
       #    20180809050125 for "Thu Aug  9 05:01:25 CDT 2018"
@@ -665,6 +664,54 @@ module AIX
           efixes_t << key
         end
         efixes_t.reverse!
+      end
+
+      # -----------------------------------------------------------------
+      # Get package name from fileset
+      #
+      #    return packaging name
+      #    raise CmdError in case of error
+      # -----------------------------------------------------------------
+      def get_pkg_name(lpp_source_dir, fileset)
+        pkg_names = []
+        cmd_s = "/usr/sbin/emgr -d -e #{lpp_source_dir}/#{fileset} -v3 | /bin/grep -w 'PACKAGE:' | /bin/cut -c16-"
+        log_debug("get_pkg_name: #{cmd_s}")
+        Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+          stderr.each_line do |line|
+            STDERR.puts line
+            log_info("[STDERR] #{line.chomp}")
+          end
+          unless wait_thr.value.success?
+            stdout.each_line { |line| log_info("[STDOUT] #{line.chomp}") }
+            raise CmdError, "Error: Command \"#{cmd_s}\" returns above error!"
+          end
+
+          stdout.each_line do |line|
+            log_info("[STDOUT] #{line.chomp}")
+            # match "  devices.pciex.df1060e214103404.com"
+            next unless line =~ /^\s*(\S*[.]\S*)\s*$/
+            pkg_names << Regexp.last_match(1)
+          end
+        end
+        log_debug("get_pkg_names for: #{lpp_source_dir}/#{fileset} => #{pkg_names}")
+        pkg_names
+      end
+
+      #-----------------------------------------------------------------
+      # get hash table package names from fileset list
+      #
+      #    return sorted list of fileset
+      #-----------------------------------------------------------------
+      def get_efix_packaging_name(lpp_source_dir, filesets)
+        pkg_name_h = {}
+        filesets.each do |fileset|
+          begin
+            pkg_name_h[fileset] = get_pkg_name(lpp_source_dir, fileset)
+          rescue CmdError => e
+            log_debug("get_efix_packaging_name -> get_pkg_name Error: #{e}")
+          end
+        end
+        pkg_name_h
       end
 
       # -----------------------------------------------------------------
@@ -1362,7 +1409,7 @@ module AIX
             if hdisk_dict.key?(hdisk)
               if hdisk_dict[hdisk] != copy
                 msg = 'rootvg data structure is not compatible with an '\
-                      'alt_dik_copy operation (2 copies on the same disk)'
+                      'alt_disk_copy operation (2 copies on the same disk)'
                 put_error(msg)
                 return vg_info
               end
@@ -1372,7 +1419,7 @@ module AIX
 
             next unless copy_dict.key?(copy)
             if copy_dict.value?(hdisk)
-              msg = 'rootvg data structure is not compatible with an alt_dik_copy operation'
+              msg = 'rootvg data structure is not compatible with an alt_disk_copy operation'
               put_error(msg)
               return vg_info
             end
@@ -1382,9 +1429,9 @@ module AIX
 
         if copy_dict.keys.length > 1
           if copy_dict.keys.length != hdisk_dict.keys.length
-            msg = "The #{vios} rootvg is partially or commpletly mirrored but somme "\
-                  'lpp copy are spread on several disks. This prevent the '\
-                  'ystem to build an alternate rootvg disk copy'
+            msg = "The #{vios} rootvg is partially or completly mirrored but some "\
+                  'LP copies are spread on several disks. This prevent the '\
+                  'system from building an alternate rootvg disk copy'
             put_error(msg)
             return vg_info
           end
@@ -1824,6 +1871,35 @@ module AIX
       end
       raise EmgrListError, "Error: Command \"#{emgr_s}\" returns above error!" unless exit_status.success?
       array_fixes
+    end
+
+    # -----------------------------------------------------------------
+    # get locked packages
+    #
+    #    raise EmgrListError in case of error
+    # -----------------------------------------------------------------
+    def get_locked_packages(machine)
+      array_locked = []
+      emgr_s = "/usr/lpp/bos.sysmgt/nim/methods/c_rsh #{machine} \"/usr/sbin/emgr -P\""
+      log_debug("EMGR listing package locks: #{emgr_s}")
+      exit_status = Open3.popen3({ 'LANG' => 'C' }, emgr_s) do |_stdin, stdout, stderr, wait_thr|
+        stdout.each_line do |line|
+          next if line =~ /^PACKAGE\s*INSTALLER\s*LABEL/
+          next if line =~ /^=*\s\=*\s\=*/
+          line_array = line.split(' ')
+          log_debug("emgr: adding locked package #{line_array[0]} to locked package list")
+          array_locked.push(line_array[0])
+          log_info("[STDOUT] #{line.chomp}")
+        end
+        stderr.each_line do |line|
+          STDERR.puts line
+          log_info("[STDERR] #{line.chomp}")
+        end
+        wait_thr.value # Process::Status object returned.
+      end
+      raise EmgrListError, "Error: Command \"#{emgr_s}\" returns above error!" unless exit_status.success?
+      array_locked.delete_if { |item| item.nil? || item.empty? }
+      array_locked
     end
 
     # -----------------------------------------------------------------
