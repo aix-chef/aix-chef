@@ -114,8 +114,8 @@ def run_flrtvc(m, apar, filesets, csv, path, verbose)
   end
 
   # execute flrtvc script (verbose if needed)
-  out_c = shell_out!("/usr/bin/flrtvc.ksh -l #{lslpp_file} -e #{emgr_file} #{apar_s} #{filesets_s} #{csv_s}", environment: { 'LANG' => 'C' ,  'LC_ALL' => 'C'}).stdout
-  out_v = shell_out!("/usr/bin/flrtvc.ksh -l #{lslpp_file} -e #{emgr_file} #{apar_s} #{filesets_s} #{csv_s} -v", environment: { 'LANG' => 'C',  'LC_ALL' => 'C'}).stdout if verbose
+  out_c = shell_out!("/usr/bin/flrtvc.ksh -l #{lslpp_file} -e #{emgr_file} #{apar_s} #{filesets_s} #{csv_s}", environment: { 'LANG' => 'C', 'LC_ALL' => 'C' }).stdout
+  out_v = shell_out!("/usr/bin/flrtvc.ksh -l #{lslpp_file} -e #{emgr_file} #{apar_s} #{filesets_s} #{csv_s} -v", environment: { 'LANG' => 'C', 'LC_ALL' => 'C' }).stdout if verbose
 
   # write report file
   unless path.nil?
@@ -345,7 +345,7 @@ def check_level_prereq?(machine, src)
   so.lines[3..-2].each do |line|
     Chef::Log.debug(line.to_s)
     next if line.start_with?('#') # skip comments
-    next unless line =~ /^(.*?)\s+(\d+\.\d+\.\d+\.\d+)\s+(\d+\.\d+\.\d+\.\d+)$/
+    next unless line =~ /^(.*?)\s+(\d+\.\d+\.\d+\.\d+)\s+(\d+\.\d+\.\d+\.\d+)(.*?)$/
 
     lslpp_file = ::File.join(Chef::Config[:file_cache_path], "lslpp_#{machine}.txt")
     ref = shell_out!("/bin/cat #{lslpp_file} | /bin/grep -w #{Regexp.last_match(1)} | /bin/cut -d: -f3", environment: { 'LANG' => 'C' }).stdout
