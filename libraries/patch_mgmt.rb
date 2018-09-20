@@ -645,11 +645,11 @@ module AIX
         pkg_date
       end
 
-      #-----------------------------------------------------------------
+      # -----------------------------------------------------------------
       # Sort fileset list by packaging date
       #
       #    return sorted list of fileset
-      #-----------------------------------------------------------------
+      # -----------------------------------------------------------------
       def efix_sort_by_packaging_date(lpp_source_dir, filesets)
         pkg_date_h = {}
         efixes_t = []
@@ -665,53 +665,69 @@ module AIX
         end
         efixes_t.reverse!
       end
-
+      
       # -----------------------------------------------------------------
-      # Get package name from fileset
+      # name : get_fileset_files_loc
+      # param : input:lpp_source_dir:string
+      # param : input:fileset:string
       #
-      #    return packaging name
+      # return array of packaging names
+      # description : get package names impacted from specific fileset
       #    raise CmdError in case of error
       # -----------------------------------------------------------------
-      def get_pkg_name(lpp_source_dir, fileset)
-        pkg_names = []
-        cmd_s = "/usr/sbin/emgr -d -e #{lpp_source_dir}/#{fileset} -v3 | /bin/grep -w 'PACKAGE:' | /bin/cut -c16-"
-        log_debug("get_pkg_name: #{cmd_s}")
+      def get_fileset_files_loc(lpp_source_dir,
+                                fileset)
+        log_debug('Into get_fileset_files_loc' +
+                          ', lpp_source_dir=' +
+                          lpp_source_dir +
+                          ', fileset=' +
+                          fileset)
+        loc_files = []
+        cmd_s = "/usr/sbin/emgr -d -e #{lpp_source_dir}/#{fileset} -v3 | /bin/grep -w 'LOCATION:' | /bin/cut -c17-"
+        log_info("get_fileset_files_loc: #{cmd_s}")
         Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
           stderr.each_line do |line|
-            STDERR.puts line
-            log_info("[STDERR] #{line.chomp}")
+            log_debug("[STDERR] #{line.chomp}")
           end
           unless wait_thr.value.success?
-            stdout.each_line { |line| log_info("[STDOUT] #{line.chomp}") }
+            stdout.each_line { |line| log_debug("[STDOUT] #{line.chomp}") }
             raise CmdError, "Error: Command \"#{cmd_s}\" returns above error!"
           end
-
           stdout.each_line do |line|
-            log_info("[STDOUT] #{line.chomp}")
-            # match "  devices.pciex.df1060e214103404.com"
-            next unless line =~ /^\s*(\S*[.]\S*)\s*$/
-            pkg_names << Regexp.last_match(1)
+            log_debug("[STDOUT] #{line.chomp}")
+            next unless line.include?('/')
+            loc_files << line.strip
           end
         end
-        log_debug("get_pkg_names for: #{lpp_source_dir}/#{fileset} => #{pkg_names}")
-        pkg_names
+        loc_files.uniq!
+        log_info("get_fileset_files_loc for: #{lpp_source_dir}/#{fileset} => #{loc_files}")
+        loc_files
       end
-
-      #-----------------------------------------------------------------
-      # get hash table package names from fileset list
+      
+      # -----------------------------------------------------------------
+      # name : get_efix_files_loc
+      # param : input:lpp_source_dir:string
+      # param : input:filesets:array
       #
-      #    return sorted list of fileset
-      #-----------------------------------------------------------------
-      def get_efix_packaging_name(lpp_source_dir, filesets)
-        pkg_name_h = {}
+      # return hash table locked files (key = fileset)
+      # description : get impacted location files from fileset list
+      # -----------------------------------------------------------------
+      def get_efix_files_loc(lpp_source_dir,
+                                   filesets)
+        log_info('Into get_efix_files_loc' +
+                          ', lpp_source_dir=' +
+                          lpp_source_dir +
+                          ', filesets=' +
+                          filesets.to_s)
+        loc_files_h = {}
         filesets.each do |fileset|
           begin
-            pkg_name_h[fileset] = get_pkg_name(lpp_source_dir, fileset)
+            loc_files_h[fileset] = get_fileset_files_loc(lpp_source_dir, fileset)
           rescue CmdError => e
-            log_debug("get_efix_packaging_name -> get_pkg_name Error: #{e}")
+            log_info("get_efix_files_loc -> get_fileset_files_loc Error: #{e}")
           end
         end
-        pkg_name_h
+        loc_files_h
       end
 
       # -----------------------------------------------------------------
@@ -1872,34 +1888,86 @@ module AIX
       raise EmgrListError, "Error: Command \"#{emgr_s}\" returns above error!" unless exit_status.success?
       array_fixes
     end
-
+    
     # -----------------------------------------------------------------
-    # get locked packages
+    # name : get_locked_files
+    # param : input:target:string
     #
-    #    raise EmgrListError in case of error
+    # return array of locked files for a specific target
+    # description : get files impacted from specific fileset
+    #    raise CmdError in case of error
     # -----------------------------------------------------------------
-    def get_locked_packages(machine)
-      array_locked = []
-      emgr_s = "/usr/lpp/bos.sysmgt/nim/methods/c_rsh #{machine} \"/usr/sbin/emgr -P\""
-      log_debug("EMGR listing package locks: #{emgr_s}")
+    def get_locked_files(target)
+      log_info('Into get_locked_files (target=' + target + ')')
+      locked_files = []
+      locked_labels = []
+      #get efix label already installed
+      emgr_s = "/usr/lpp/bos.sysmgt/nim/methods/c_rsh #{target} \"/usr/sbin/emgr -P\""
+      log_info("EMGR efix already install: #{emgr_s}")
       exit_status = Open3.popen3({ 'LANG' => 'C' }, emgr_s) do |_stdin, stdout, stderr, wait_thr|
         stdout.each_line do |line|
           next if line =~ /^PACKAGE\s*INSTALLER\s*LABEL/
           next if line =~ /^=*\s\=*\s\=*/
           line_array = line.split(' ')
-          log_debug("emgr: adding locked package #{line_array[0]} to locked package list")
-          array_locked.push(line_array[0])
-          log_info("[STDOUT] #{line.chomp}")
+          log_debug("emgr: adding locked file #{line_array[2]} to locked files list")
+          locked_labels.push(line_array[2])
+          log_debug("[STDOUT] #{line.chomp}")
         end
         stderr.each_line do |line|
-          STDERR.puts line
-          log_info("[STDERR] #{line.chomp}")
+          log_debug("[STDERR] #{line.chomp}")
         end
         wait_thr.value # Process::Status object returned.
       end
-      raise EmgrListError, "Error: Command \"#{emgr_s}\" returns above error!" unless exit_status.success?
-      array_locked.delete_if { |item| item.nil? || item.empty? }
-      array_locked
+      raise CmdError, "Error: Command \"#{emgr_s}\" returns above error!" unless exit_status.success?
+      locked_labels.delete_if { |item| item.nil? || item.empty? }
+      locked_labels.uniq!
+      log_info("get_locked_files : get labels for: #{target} => #{locked_labels}")
+      locked_labels.each do |label|
+        files = get_efix_files(target,label)
+        files.each do |file|
+          locked_files << file
+        end
+      end
+      locked_files.uniq!
+      log_info("get_locked_files : for: #{target} => #{locked_files}")
+      locked_files
+    end
+    
+    # -----------------------------------------------------------------
+    # name : get_efix_files
+    # param : input:target:string
+    # param : input:label:string
+    #
+    # return array of files
+    # description : get file locations impacted from specific efix
+    #    raise CmdError in case of error
+    # -----------------------------------------------------------------
+    def get_efix_files(target,
+                       label)
+      log_info('Into get_efix_files (target=' +
+                     target +
+                     '), label=' +
+                     label)
+      file_locations = []
+      cmd_s = "/usr/lpp/bos.sysmgt/nim/methods/c_rsh #{target} \"/usr/sbin/emgr -l -L #{label} -v3 | /bin/grep -w 'LOCATION:' | /bin/cut -c17-\""
+      log_info("get_efix_files: #{cmd_s}")
+      Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+        stderr.each_line do |line|
+          log_debug("[STDERR] #{line.chomp}")
+        end
+        unless wait_thr.value.success?
+          stdout.each_line { |line| log_info("[STDOUT] #{line.chomp}") }
+          raise CmdError, "Error: Command \"#{cmd_s}\" returns above error!"
+        end
+        stdout.each_line do |line|
+          log_debug("[STDOUT] #{line.chomp}")
+          next unless line.include?('/')
+          file_locations << line.strip
+        end
+      end
+      file_locations.uniq!
+      log_info("get_efix_files for: #{target} : #{label}  => #{file_locations}")
+      file_locations
     end
 
     # -----------------------------------------------------------------

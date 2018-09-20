@@ -494,7 +494,6 @@ action :patch do
     # copy efix
     efixes_basenames = []
     sort_efixes_basenames = []
-    list_pkg_name = {}
 
     efixes.each do |efix|
       # build the efix basenames array
@@ -557,35 +556,39 @@ action :patch do
         nim.define_lpp_source(lpp_source, lpp_source_base_dir) unless nim.exist?(lpp_source)
         begin
           sort_efixes_basenames = nim.efix_sort_by_packaging_date(lpp_source_dir, efixes_basenames)
-          locked_pkg = []
-          list_pkg_name = {}
+          locked_fil = []
+          list_files_loc = {}
           # get locked package from client
-          locked_pkg = nim.get_locked_packages(m)
-          Chef::Log.debug("Locked package list for client [#{m}]: #{locked_pkg}")
+          begin
+            locked_fil = nim.get_locked_files(m)
+          rescue CmdError => e
+            Chef::Log.info("get_locked_files Error for client #{target}:#{e}")
+          end
+          Chef::Log.debug("Locked package list for client [#{m}]: #{locked_fil}")
           # get package name from efix list
-          list_pkg_name = nim.get_efix_packaging_name(lpp_source_dir, sort_efixes_basenames)
-          list_pkg_name_copy = list_pkg_name.dup
-          Chef::Log.debug("Package list name: #{list_pkg_name}")
+          list_files_loc = nim.get_efix_files_loc(lpp_source_dir, sort_efixes_basenames)
+          list_files_loc_copy = list_files_loc.dup
+          Chef::Log.debug("Package list name: #{list_files_loc}")
           # remove efix from list if package is locked
-          locked_pkg.each do |item|
-            list_pkg_name.delete_if { |_, v| v.include?(item) }
+          locked_fil.each do |item|
+            list_files_loc.delete_if { |_, v| v.include?(item) }
           end
           # remove efix with package name doublon
           unlock_efixes_basenames = {}
-          list_pkg_name.each do |k, v|
+          list_files_loc.each do |k, v|
             unlock_efixes_basenames[k] = v
             del_key = []
-            list_pkg_name.delete(k)
+            list_files_loc.delete(k)
             v.each do |item|
-              list_pkg_name.each do |ky, va|
+              list_files_loc.each do |ky, va|
                 del_key << ky if va.include?(item)
               end
-              list_pkg_name.delete_if { |kk, _| del_key.include?(kk) }
+              list_files_loc.delete_if { |kk, _| del_key.include?(kk) }
             end
           end
           # next if efix list to apply is empty
           if unlock_efixes_basenames.keys.empty?
-            msg1 = "[#{m}] Have #{urls.size} vulnerabilities but no installion will be done due to locked packages"
+            msg1 = "[#{m}] Have #{urls.size} vulnerabilities but no installion will be done due to locked files"
             msg2 = "[#{m}] Use force option to remove locked packages before update"
             Chef::Log.warn(msg1)
             Chef::Log.warn(msg2)
@@ -595,24 +598,24 @@ action :patch do
           end
           # check if conflict detected to log message
           unlock_efixes_basenames.each do |key, _|
-            list_pkg_name_copy.delete(key)
+            list_files_loc_copy.delete(key)
           end
-          unless list_pkg_name_copy.empty?
-            msg = "[#{m}] Some Efix will not be installed due to a conflict on packages:"
+          unless list_files_loc_copy.empty?
+            msg = "\n[#{m}] Some Efix will not be installed due to a conflict on files:"
             Chef::Log.warn(msg)
             puts msg
-            unless locked_pkg.empty?
-              puts "\t[#{m}]Locked packages:"
-              puts "\t" + locked_pkg.join("\n\t")
+            unless locked_fil.empty?
+              puts "\t[#{m}]Conflicting files:"
+              puts "\t" + locked_fil.join("\n\t")
               puts "\n\tUse force option to remove locked packages before update"
             end
-            msg1 = "\t\tEFix\t=>    Packages   "
+            msg1 = "\t\tEFix\t=>    Files   "
             msg2 = "\t\t------------------------"
             Chef::Log.warn(msg1)
             Chef::Log.warn(msg2)
             puts msg1
             puts msg2
-            list_pkg_name_copy.each do |k, v|
+            list_files_loc_copy.each do |k, v|
               msg1 = "\t\t#{format('%s', k)}"
               Chef::Log.warn(msg1)
               puts msg1
