@@ -96,7 +96,7 @@ def check_lpp_source(lpp_source)
   # find location of lpp_source
   cmd_s = "/usr/sbin/lsnim -a location #{lpp_source}"
   log_info("check_lpp_source: '#{cmd_s}'")
-  exit_status = Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+  exit_status = Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
     stdout.each_line do |line|
       log_info("[STDOUT] #{line.chomp}")
       location = Regexp.last_match(1) if line =~ /.*location\s+=\s+(\S+)\s*/
@@ -136,7 +136,7 @@ def vios_health_init(nim_vios, hmc_id, hmc_ip)
   cmd_s = "/usr/sbin/vioshc.py -i #{hmc_ip} -l a"
   log_info("Health Check: init command '#{cmd_s}'")
 
-  Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+  Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
     stderr.each_line do |line|
       # nothing is print on stderr so far but log anyway
       STDERR.puts line
@@ -247,7 +247,7 @@ def vios_health_check(nim_vios, hmc_ip, vios_list)
   end
   log_info("Health Check: init command '#{cmd_s}'")
 
-  Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+  Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
     stderr.each_line do |line|
       STDERR.puts line
       log_info("[STDERR] #{line.chomp}")
@@ -379,7 +379,7 @@ def get_vios_ssp_status(nim_vios, vios_list, vios_key, targets_status)
     cmd_s = "/usr/lpp/bos.sysmgt/nim/methods/c_rsh #{nim_vios[vios]['vios_ip']} \"/usr/ios/cli/ioscli cluster -status -fmt :\""
 
     log_debug("ssp_status: '#{cmd_s}'")
-    Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+    Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
       stderr.each_line do |line|
         STDERR.puts line
         log_info("[STDERR] #{line.chomp}")

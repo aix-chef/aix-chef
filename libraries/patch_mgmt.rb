@@ -63,7 +63,7 @@ module AIX
       disks = {}
       cmd_s = "/usr/lpp/bos.sysmgt/nim/methods/c_rsh #{vios} \"/usr/ios/cli/ioscli lspv -free\""
 
-      Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+      Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
         stderr.each_line do |line|
           STDERR.puts line
           log_info("[STDERR] #{line.chomp}")
@@ -369,7 +369,7 @@ module AIX
       def metadata
         suma_s = @suma_s + ' -a Action=Metadata'
         log_debug("SUMA metadata operation: #{suma_s}")
-        exit_status = Open3.popen3({ 'LANG' => 'C' }, suma_s) do |_stdin, stdout, stderr, wait_thr|
+        exit_status = Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, suma_s) do |_stdin, stdout, stderr, wait_thr|
           stdout.each_line do |line|
             log_info("[STDOUT] #{line.chomp}")
           end
@@ -388,7 +388,7 @@ module AIX
         suma_s = @suma_s + ' -a Action=Preview'
         log_debug("SUMA preview operation: #{suma_s}")
         do_not_error = false
-        exit_status = Open3.popen3({ 'LANG' => 'C' }, suma_s) do |_stdin, stdout, stderr, wait_thr|
+        exit_status = Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, suma_s) do |_stdin, stdout, stderr, wait_thr|
           stdout.each_line do |line|
             @dl = Regexp.last_match(1).to_f / 1024 / 1024 / 1024 if line =~ /Total bytes of updates downloaded: ([0-9]+)/
             @downloaded = Regexp.last_match(1) if line =~ /([0-9]+) downloaded/
@@ -420,7 +420,7 @@ module AIX
         download_failed = 0
         download_skipped = 0
         puts "Start downloading #{@downloaded} fixes (~ #{@dl.to_f.round(2)} GB) to '#{@dl_target}' directory."
-        exit_status = Open3.popen3({ 'LANG' => 'C' }, suma_s) do |_stdin, stdout, stderr, wait_thr|
+        exit_status = Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, suma_s) do |_stdin, stdout, stderr, wait_thr|
           thr = Thread.new do
             start = Time.now
             loop do
@@ -506,7 +506,7 @@ module AIX
         log_debug("NIM asynchronus cust operation: #{nim_s}")
         puts "\nStart updating machine(s) '#{clients}' to #{lpp_source}."
         do_not_error = false
-        exit_status = Open3.popen3({ 'LANG' => 'C' }, nim_s) do |_stdin, stdout, stderr, wait_thr|
+        exit_status = Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, nim_s) do |_stdin, stdout, stderr, wait_thr|
           stdout.each_line do |line|
             do_not_error = true if line =~ /Either the software is already at the same level as on the media, or/
             log_info("[STDOUT] #{line.chomp}")
@@ -527,7 +527,7 @@ module AIX
         log_debug("NIM synchronous cust operation: #{nim_s}")
         puts "Start updating machine(s) '#{clients}' to #{lpp_source}."
         do_not_error = false
-        exit_status = Open3.popen3({ 'LANG' => 'C' }, nim_s) do |_stdin, stdout, stderr, wait_thr|
+        exit_status = Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, nim_s) do |_stdin, stdout, stderr, wait_thr|
           stdout.each_line do |line|
             print "\033[2K\r#{line.chomp}" if line =~ /^Filesets processed:.*?[0-9]+ of [0-9]+/
             print "\033[2K\r#{line.chomp}" if line =~ /^Finished processing all filesets./
@@ -549,7 +549,7 @@ module AIX
         nim_s = "/usr/sbin/nim -o cust -a lpp_source=#{lpp_source} -a filesets='#{filesets}' #{client}"
         log_debug("NIM install efixes cust operation: #{nim_s}")
         puts "Start patching machine(s) '#{client}'."
-        exit_status = Open3.popen3({ 'LANG' => 'C' }, nim_s) do |_stdin, stdout, stderr, wait_thr|
+        exit_status = Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, nim_s) do |_stdin, stdout, stderr, wait_thr|
           thr = Thread.new do
             loop do
               print '.'
@@ -581,7 +581,7 @@ module AIX
         nim_s = "/usr/sbin/nim -o updateios -a preview=no -a lpp_source=#{lpp_source} #{vios}"
         log_debug("NIM updateios operation: #{nim_s}")
         puts "Start patching machine(s) '#{vios}'."
-        exit_status = Open3.popen3({ 'LANG' => 'C' }, nim_s) do |_stdin, stdout, stderr, wait_thr|
+        exit_status = Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, nim_s) do |_stdin, stdout, stderr, wait_thr|
           thr = Thread.new do
             loop do
               print '.'
@@ -620,7 +620,7 @@ module AIX
         pkg_date = ''
         cmd_s = "/usr/sbin/emgr -d -e #{lpp_source_dir}/#{fileset} -v3 | /bin/grep -w 'PACKAGING DATE' | /bin/cut -c16-"
         log_debug("get_pkg_date: #{cmd_s}")
-        Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+        Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
           stderr.each_line do |line|
             STDERR.puts line
             log_info("[STDERR] #{line.chomp}")
@@ -685,7 +685,7 @@ module AIX
         loc_files = []
         cmd_s = "/usr/sbin/emgr -d -e #{lpp_source_dir}/#{fileset} -v3 | /bin/grep -w 'LOCATION:' | /bin/cut -c17-"
         log_info("get_fileset_files_loc: #{cmd_s}")
-        Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+        Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
           stderr.each_line do |line|
             log_debug("[STDERR] #{line.chomp}")
           end
@@ -743,7 +743,7 @@ module AIX
         obj_key = ''
         cmd_s = '/usr/sbin/lsnim -t cec -l'
         log_debug("get_cecs_info: #{cmd_s}")
-        Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+        Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
           stderr.each_line do |line|
             STDERR.puts line
             log_info("[STDERR] #{line.chomp}")
@@ -790,7 +790,7 @@ module AIX
         obj_key = ''
         cmd_s = '/usr/sbin/lsnim -t hmc -l'
         log_debug("get_hmc_info: #{cmd_s}")
-        Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+        Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
           stderr.each_line do |line|
             STDERR.puts line
             log_info("[STDERR] #{line.chomp}")
@@ -856,7 +856,7 @@ module AIX
         obj_key = ''
         cmd_s = "/usr/sbin/lsnim -t #{lpar_type} -l"
         log_debug("get_nim_clients_info: '#{cmd_s}'")
-        Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+        Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
           stderr.each_line do |line|
             STDERR.puts line
             log_info("[STDERR] #{line.chomp}")
@@ -918,7 +918,7 @@ module AIX
         cmd_s = "/usr/lpp/bos.sysmgt/nim/methods/c_rsh #{nim_vios[vios]['vios_ip']} \"/usr/sbin/unmirrorvg #{vg_name} 2>&1 \""
 
         log_info("perform_unmirror: '#{cmd_s}'")
-        Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, _stderr, wait_thr|
+        Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, cmd_s) do |_stdin, stdout, _stderr, wait_thr|
           stdout.each_line do |line|
             STDOUT.puts line
             log_info("[STDOUT] #{line.chomp}")
@@ -956,7 +956,7 @@ module AIX
           cmd_s += ' 2>&1'
 
           log_info("perform_mirror: '#{cmd_s}'")
-          Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, _stderr, wait_thr|
+          Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, cmd_s) do |_stdin, stdout, _stderr, wait_thr|
             stdout.each_line do |line|
               STDOUT.puts line
               log_info("[STDERR] #{line.chomp}")
@@ -1036,7 +1036,7 @@ module AIX
           nim_result = ''
           nim_info = ''
 
-          Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+          Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
             stderr.each_line do |line|
               STDERR.puts line
               log_info("[STDERR] #{line.chomp}")
@@ -1119,7 +1119,7 @@ module AIX
         cmd_s = "/usr/lpp/bos.sysmgt/nim/methods/c_rsh #{nim_vios[vios]['vios_ip']} \"/usr/ios/cli/ioscli lspv\""
 
         log_debug("get_pvs: '#{cmd_s}'")
-        Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+        Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
           stderr.each_line do |line|
             STDERR.puts line
             log_info("[STDERR] #{line.chomp}")
@@ -1167,7 +1167,7 @@ module AIX
         cmd_s = "/usr/lpp/bos.sysmgt/nim/methods/c_rsh #{nim_vios[vios]['vios_ip']} \"/usr/ios/cli/ioscli lspv -free\""
 
         log_debug("get_free_pvs: '#{cmd_s}'")
-        Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+        Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
           stderr.each_line do |line|
             STDERR.puts line
             log_info("[STDERR] #{line.chomp}")
@@ -1212,7 +1212,7 @@ module AIX
         cmd_s = "/usr/lpp/bos.sysmgt/nim/methods/c_rsh #{nim_vios[vios]['vios_ip']} \"/usr/ios/cli/ioscli lsvg #{vg_name}\""
 
         log_info("get_vg_size: '#{cmd_s}'")
-        Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+        Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
           stderr.each_line do |line|
             STDERR.puts line
             log_info("[STDERR] #{line.chomp}")
@@ -1262,7 +1262,7 @@ module AIX
         cmd_s = "/usr/lpp/bos.sysmgt/nim/methods/c_rsh #{nim_vios[vios]['vios_ip']} \"/usr/sbin/lsvg #{vg_name}\""
 
         log_info("get_vg_size: '#{cmd_s}'")
-        Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+        Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
           stderr.each_line do |line|
             STDERR.puts line
             log_info("[STDERR] #{line.chomp}")
@@ -1307,7 +1307,7 @@ module AIX
         cmd_s = "/usr/lpp/bos.sysmgt/nim/methods/c_rsh #{nim_vios[vios]['vios_ip']} \"/usr/sbin/lsvg -p #{vg_name}\""
 
         log_info("get_pv_size_from_hdisk: '#{cmd_s}'")
-        Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+        Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
           stderr.each_line do |line|
             STDERR.puts line
             log_info("[STDERR] #{line.chomp}")
@@ -1373,7 +1373,7 @@ module AIX
         # The lsvg -M command lists the physical disks that contain the various logical volumes.
         cmd_s = "/usr/lpp/bos.sysmgt/nim/methods/c_rsh #{nim_vios[vios]['vios_ip']} \"/usr/sbin/lsvg -M rootvg\""
         log_info("check_rootvg: '#{cmd_s}'")
-        Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+        Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
           stderr.each_line do |line|
             STDERR.puts line
             log_info("[STDERR] #{line.chomp}")
@@ -1870,7 +1870,7 @@ module AIX
       array_fixes = []
       emgr_s = "/usr/lpp/bos.sysmgt/nim/methods/c_rsh #{machine} \"/usr/sbin/emgr -l\""
       log_debug("EMGR list: #{emgr_s}")
-      exit_status = Open3.popen3({ 'LANG' => 'C' }, emgr_s) do |_stdin, stdout, stderr, wait_thr|
+      exit_status = Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, emgr_s) do |_stdin, stdout, stderr, wait_thr|
         stdout.each_line do |line|
           line_array = line.split(' ')
           if line_array[0] =~ /[0-9]/
@@ -1904,7 +1904,7 @@ module AIX
       #get efix label already installed
       emgr_s = "/usr/lpp/bos.sysmgt/nim/methods/c_rsh #{target} \"/usr/sbin/emgr -P\""
       log_info("EMGR efix already install: #{emgr_s}")
-      exit_status = Open3.popen3({ 'LANG' => 'C' }, emgr_s) do |_stdin, stdout, stderr, wait_thr|
+      exit_status = Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, emgr_s) do |_stdin, stdout, stderr, wait_thr|
         stdout.each_line do |line|
           next if line =~ /^PACKAGE\s*INSTALLER\s*LABEL/
           next if line =~ /^=*\s\=*\s\=*/
@@ -1951,7 +1951,7 @@ module AIX
       file_locations = []
       cmd_s = "/usr/lpp/bos.sysmgt/nim/methods/c_rsh #{target} \"/usr/sbin/emgr -l -L #{label} -v3 | /bin/grep -w 'LOCATION:' | /bin/cut -c17-\""
       log_info("get_efix_files: #{cmd_s}")
-      Open3.popen3({ 'LANG' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+      Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
         stderr.each_line do |line|
           log_debug("[STDERR] #{line.chomp}")
         end

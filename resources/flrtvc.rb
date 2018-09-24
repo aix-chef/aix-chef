@@ -516,7 +516,7 @@ action :patch do
       converge_by("geninstall: install all efixes from '#{lpp_source_base_dir}'") do
         puts "\nStart patching nim master or local machine."
         geninstall_s = "/usr/sbin/geninstall -d #{lpp_source_base_dir} #{efixes_basenames.join(' ')}"
-        exit_status = Open3.popen3({ 'LANG' => 'C' }, geninstall_s) do |_stdin, stdout, stderr, wait_thr|
+        exit_status = Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, geninstall_s) do |_stdin, stdout, stderr, wait_thr|
           stdout.each_line do |line|
             line.chomp!
             print "\033[2K\r#{line}" if line =~ /^Processing Efix Package [0-9]+ of [0-9]+.$/
@@ -562,7 +562,7 @@ action :patch do
           begin
             locked_fil = nim.get_locked_files(m)
           rescue CmdError => e
-            Chef::Log.info("get_locked_files Error for client #{target}:#{e}")
+            Chef::Log.warn("get_locked_files Error for client #{target}:#{e}")
           end
           Chef::Log.debug("Locked package list for client [#{m}]: #{locked_fil}")
           # get package name from efix list
@@ -588,7 +588,7 @@ action :patch do
           end
           # next if efix list to apply is empty
           if unlock_efixes_basenames.keys.empty?
-            msg1 = "[#{m}] Have #{urls.size} vulnerabilities but no installion will be done due to locked files"
+            msg1 = "\n[#{m}] Have #{urls.size} vulnerabilities but no installion will be done due to locked files"
             msg2 = "[#{m}] Use force option to remove locked packages before update"
             Chef::Log.warn(msg1)
             Chef::Log.warn(msg2)
@@ -601,7 +601,7 @@ action :patch do
             list_files_loc_copy.delete(key)
           end
           unless list_files_loc_copy.empty?
-            msg = "\n[#{m}] Some Efix will not be installed due to a conflict on files:"
+            msg = "\n[#{m}] Some Efixes will not be installed due to a conflict on files:"
             Chef::Log.warn(msg)
             puts msg
             unless locked_fil.empty?
