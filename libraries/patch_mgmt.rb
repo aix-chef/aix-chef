@@ -244,6 +244,9 @@ module AIX
     class ViosCmdError < StandardError
     end
 
+    class ViosUpgradeQueryError < StandardError
+    end
+
     class AltDiskFindError < StandardError
     end
 
@@ -665,7 +668,7 @@ module AIX
         end
         efixes_t.reverse!
       end
-      
+
       # -----------------------------------------------------------------
       # name : get_fileset_files_loc
       # param : input:lpp_source_dir:string
@@ -677,11 +680,7 @@ module AIX
       # -----------------------------------------------------------------
       def get_fileset_files_loc(lpp_source_dir,
                                 fileset)
-        log_debug('Into get_fileset_files_loc' +
-                          ', lpp_source_dir=' +
-                          lpp_source_dir +
-                          ', fileset=' +
-                          fileset)
+        log_debug("Into get_fileset_files_loc: lpp_source_dir=#{lpp_source_dir}, fileset=#{fileset}")
         loc_files = []
         cmd_s = "/usr/sbin/emgr -d -e #{lpp_source_dir}/#{fileset} -v3 | /bin/grep -w 'LOCATION:' | /bin/cut -c17-"
         log_info("get_fileset_files_loc: #{cmd_s}")
@@ -703,7 +702,7 @@ module AIX
         log_info("get_fileset_files_loc for: #{lpp_source_dir}/#{fileset} => #{loc_files}")
         loc_files
       end
-      
+
       # -----------------------------------------------------------------
       # name : get_efix_files_loc
       # param : input:lpp_source_dir:string
@@ -714,11 +713,7 @@ module AIX
       # -----------------------------------------------------------------
       def get_efix_files_loc(lpp_source_dir,
                                    filesets)
-        log_info('Into get_efix_files_loc' +
-                          ', lpp_source_dir=' +
-                          lpp_source_dir +
-                          ', filesets=' +
-                          filesets.to_s)
+        log_info("Into get_efix_files_loc: lpp_source_dir=#{lpp_source_dir}, fileset=#{filesets}")
         loc_files_h = {}
         filesets.each do |fileset|
           begin
@@ -1019,7 +1014,7 @@ module AIX
       #    1   if the alt_disk_install operation failed
       #    -1  if the alt_disk_install operation timed out
       #
-      #    raise NimLparInfoError if cannot get NIM state
+      #    raise NimLparInfoError if cannot get NIM state+
       # -----------------------------------------------------------------
       def wait_alt_disk_install(vios, check_count = 180, sleep_time = 10)
         nim_info_prev = '___' # this info should not appears in nim info attribute
@@ -1095,6 +1090,154 @@ module AIX
 
         # timed out before the end of alt_disk_install
         msg = "NIM alt_disk_install operation for #{vios} shows no progress in #{count * sleep_time / 60} minute(s): #{nim_info}"
+        put_error(msg)
+        -1
+      end
+
+      # -----------------------------------------------------------------
+      # check if viosupgrade is finish
+      #
+      #    return 0 if finish
+      #    return 1 if not finish
+      #    return -1 if error detected
+      #    raise ViosUpgradeQueryError in case of error
+      # -----------------------------------------------------------------
+      def viosupgrade_query_status(vios)
+        rc = 1
+        nb_check = 0
+        # cmd_s = "/usr/sbin/viosupgrade -q -n #{vios}"
+        cmd_s = "/usr/sbin/lsnim -l #{vios}"
+        err_info = false
+        log_info("viosupgrade_query_status: '#{cmd_s}'")
+        exit_status = Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+          stdout.each_line do |line|
+            log_info("[STDOUT] #{line.chomp}")
+            line.chomp!
+            line.strip!
+            nb_check += 1 if line =~ /^Cstate\s+=\s+ready for a NIM operation$/
+            nb_check += 1 if line =~ /^Mstate\s+=\s+ready for use$/
+            nb_check += 1 if line =~ /^Mstate\s+=\s+currently running$/
+            nb_check += 1 if line =~ /^Cstate_result\s+=\s+success$/
+            nb_check -= 1 if line =~ /^info\s+=/
+            err_info = true if line =~ /^err_info\s+=/
+          end
+          stderr.each_line do |line|
+            STDERR.puts line
+            log_info("[STDERR] #{line.chomp}")
+          end
+          wait_thr.value # Process::Status object returned.
+        end
+        raise ViosUpgradeQueryError, "viosupgrade_query_status: #{cmd_s}' returns above error." unless exit_status.success?
+        rc = 0 if nb_check == 3
+        rc = -1 if err_info
+        rc
+      end
+
+      # -----------------------------------------------------------------
+      # get cluster status
+      #
+      #
+      #    Raise ViosCmdError in case of command error
+      # -----------------------------------------------------------------
+      def get_cluster_status(nim_vios, vios)
+        rc = 1
+        cmd_s = "/usr/lpp/bos.sysmgt/nim/methods/c_rsh #{nim_vios[vios]['vios_ip']} \"/usr/ios/cli/ioscli cluster -status -fmt :\""
+        log_info("get_cluster_status: '#{cmd_s}'")
+        Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, cmd_s) do |_stdin, stdout, stderr, wait_thr|
+          stderr.each_line do |line|
+            STDERR.puts line
+            log_info("[STDERR] #{line.chomp}")
+          end
+          unless wait_thr.value.success?
+            stdout.each_line { |line| log_info("[STDOUT] #{line.chomp}") }
+            msg = "Failed to get cluster status on #{vios}, command \"#{cmd_s}\" returns above error!"
+            raise ViosCmdError, msg
+          end
+          # stdout is like:
+          # p7juf_cluster:OK:p7jufv1:8205-E6C020686AFR:1:OK:OK
+          # p7juf_cluster:OK:p7jufv2:8205-E6C020686AFR:7:OK:OK
+          stdout.each_line do |line|
+            log_debug("[STDOUT] #{line.chomp}")
+            line.chomp!
+            line.strip!
+            if line =~ /^(\S+):(\S+):(\S+):(\S+):(\d+):(\S+):(.*)/
+              rc = if Regexp.last_match(6) == 'DOWN' || Regexp.last_match(7) == 'DOWN'
+                     1
+                   else
+                     0
+                   end
+            end
+          end
+        end
+        rc
+      end
+
+      # -----------------------------------------------------------------
+      # Wait for viosupgrade operation to finish
+      #
+      # when viosupgrade operation ends the NIM object state changes
+      #
+      # You migh want a timeout of 60 minutes (count=360, sleep=10s)
+      #
+      #    Return
+      #    0   if the viosupgrade operation ends with success
+      #    1   if the viosupgrade operation failed
+      #   -1  if the viosupgrade operation timed out
+      #
+      #    raise ViosUpgradeQueryError if cannot get viosupgrade status
+      # rubocop:disable Style/GuardClause
+      # -----------------------------------------------------------------
+      def wait_viosupgrade(nim_vios, vios, check_count = 360, sleep_time = 10)
+        count = 0
+        wait_time = 0
+
+        log_info("wait_viosupgrade for vios: '#{vios}'")
+        upgrade_status_ok = false
+        st_upg = -2
+        st_clust = -2
+
+        while count <= check_count
+          sleep(sleep_time)
+          wait_time += 10
+
+          unless upgrade_status_ok
+            begin
+              st_upg = viosupgrade_query_status(vios)
+              log_info("viosupgrade succeded for vios: '#{vios}'") if st_upg == 0
+            rescue ViosUpgradeQueryError => e
+              msg = "viosuprade status error: #{e.message}"
+              put_error(msg)
+            end
+          end
+          case st_upg
+          when 0
+            upgrade_status_ok = true
+            # if cluster defined - check the if the clsuter is restarted if exist
+            if nim_vios[vios]['ssp_id'] != 'none'
+              begin
+                st_clust = get_cluster_status(nim_vios, vios)
+              rescue ViosCmdError => e
+                msg = "Cluster status error: #{e.message}"
+                put_error(msg)
+              end
+              # success with cluster check
+              return 0 if st_clust == 0
+            else
+              # success with no cluster check
+              return 0
+            end
+          when -1
+            # error detected
+            return 1
+          end
+          if wait_time.modulo(60) == 0
+            msg = "Waiting VIOSUPGRADE on #{vios}... duration: #{wait_time / 60} minute(s)"
+            print("\033[2K\r#{msg}")
+            log_info(msg)
+          end
+        end # while count
+        # timed out before the end of viosupgrade
+        msg = "VIOS UPGRADE OPERATION for #{vios} TIME OUT #{count * sleep_time / 60} minute(s)"
         put_error(msg)
         -1
       end
@@ -1675,7 +1818,6 @@ module AIX
       # -----------------------------------------------------------------
       def get_altinst_rootvg_disk(nim_vios, vios, altdisk_hash)
         ret = 0
-
         begin
           get_pvs(nim_vios, vios)
         rescue ViosCmdError => e
@@ -1888,7 +2030,7 @@ module AIX
       raise EmgrListError, "Error: Command \"#{emgr_s}\" returns above error!" unless exit_status.success?
       array_fixes
     end
-    
+
     # -----------------------------------------------------------------
     # name : get_locked_files
     # param : input:target:string
@@ -1901,7 +2043,7 @@ module AIX
       log_info('Into get_locked_files (target=' + target + ')')
       locked_files = []
       locked_labels = []
-      #get efix label already installed
+      # get efix label already installed
       emgr_s = "/usr/lpp/bos.sysmgt/nim/methods/c_rsh #{target} \"/usr/sbin/emgr -P\""
       log_info("EMGR efix already install: #{emgr_s}")
       exit_status = Open3.popen3({ 'LANG' => 'C', 'LC_ALL' => 'C' }, emgr_s) do |_stdin, stdout, stderr, wait_thr|
@@ -1923,7 +2065,7 @@ module AIX
       locked_labels.uniq!
       log_info("get_locked_files : get labels for: #{target} => #{locked_labels}")
       locked_labels.each do |label|
-        files = get_efix_files(target,label)
+        files = get_efix_files(target, label)
         files.each do |file|
           locked_files << file
         end
@@ -1932,7 +2074,7 @@ module AIX
       log_info("get_locked_files : for: #{target} => #{locked_files}")
       locked_files
     end
-    
+
     # -----------------------------------------------------------------
     # name : get_efix_files
     # param : input:target:string
@@ -2403,6 +2545,185 @@ module AIX
       log_info("List of targets expanded to #{selected_vios}")
       log_info("List of altdisk: #{altdisk_hash}")
       selected_vios
+    end
+
+    # -----------------------------------------------------------------
+    # Buidl installdisk regarding the target vios pair list parameter
+    #
+    #    targets are in the form (vios1,vios2) (vios3,vios4) (vios5) (vios6)
+    #
+    #    for no installdisk checking installdisks should be nil otherwise
+    #    it should be the keyword 'skip' or in the form
+    #    (hdisk1,hdisk2) (hdisk1,) (hdisk5) ()
+    #    with the same number of hdisk than VIOSes even if empty
+    #
+    #    raise InvalidTargetsProperty in case of error
+    #
+    # -----------------------------------------------------------------
+    def build_installdisks(targets, vios_nim_list, installdisks)
+      installdisk_hash = {}
+      selected_vios = []
+      vios_list = []
+
+      vios_list_tuples = targets.delete(' ').gsub('),(', ')(').split('(')
+      vios_list_tuples.delete_at(0) # after the split, 1rst elt is nil
+
+      unless installdisks.nil? || installdisks == 'skip'
+        # Remove the spaces added here after after the tuple lengh has beed tested
+        hd_list_tuples = installdisks.delete(' ').gsub('),(', ')(').gsub('(,', '( ,').gsub(',)', ', )').split('(')
+        hd_list_tuples.delete_at(0)
+        if hd_list_tuples.length != vios_list_tuples.length
+          raise InvalidTargetsProperty, "Error: Install hdisks '#{installdisks}' and vios target '#{targets}' must have the same number of element"
+        end
+      end
+
+      # Build targets list
+      hd_tuple_index = 0
+      vios_list_tuples.each do |vios_tuple|
+        my_tuple = vios_tuple.delete(')')
+        tuple_elts = my_tuple.split(',')
+        tuple_len = tuple_elts.length
+
+        # check targets has the form of (vios1,vios2) or (vios3)
+        if tuple_len != 1 && tuple_len != 2
+          raise InvalidTargetsProperty, "Error: Malformed vios targets '#{targets}'"
+        end
+
+        # check vios not already exists in the target list
+        if vios_list.include?(tuple_elts[0]) ||
+           (tuple_len == 2 && (vios_list.include?(tuple_elts[1]) ||
+            tuple_elts[0] == tuple_elts[1]))
+          raise InvalidTargetsProperty, "Error: Malformed vios targets, Duplicated values '#{targets}'"
+        end
+
+        # check vios is knowed by the NIM master - if not ignore it
+        if !vios_nim_list.include?(tuple_elts[0]) ||
+           tuple_len == 2 && !vios_nim_list.include?(tuple_elts[1])
+          next
+        end
+
+        if tuple_len == 2
+          vios_list.push(tuple_elts[0], tuple_elts[1])
+        else
+          vios_list.push(tuple_elts[0])
+        end
+        selected_vios.push(my_tuple)
+
+        # Handle hdisk list if installdisks not nil
+        next if installdisks.nil?
+
+        # in skip mode, just add empty hdisk for the 2 vioses
+        if installdisks == 'skip'
+          installdisk_hash[tuple_elts[0]] = ''
+          installdisk_hash[tuple_elts[1]] = ''
+          next
+        end
+
+        # parse the hdisk tuple
+        hd_tuple = hd_list_tuples[hd_tuple_index].delete(')')
+        hd_tuple_elts = hd_tuple.split(',')
+        hd_tuple_len = hd_tuple_elts.length
+        if hd_tuple_len != tuple_len
+          raise InvalidTargetsProperty, "Error: install hdsik tuple '#{hd_tuple}' and vios tuple '#{my_tuple}' must have the same number of element"
+        end
+        installdisk_hash[tuple_elts[0]] = hd_tuple_elts[0].delete(' ')
+        if tuple_len == 2
+          installdisk_hash[tuple_elts[1]] = hd_tuple_elts[1].delete(' ')
+        end
+        hd_tuple_index += 1
+      end
+      log_info("List of install disks: #{installdisk_hash}")
+      installdisk_hash
+    end
+
+    # -----------------------------------------------------------------
+    # Buidl resources regarding the target vios pair list parameter
+    #
+    #    targets are in the form (vios1,vios2) (vios3,vios4) (vios5) (vios6)
+    #
+    #    for no resources checking resources should be nil otherwise
+    #    it should be the keyword 'skip' or in the form
+    #    (res11:res12,res21) (res1,) (res) ()
+    #    with the same number of resource than VIOSes even if empty
+    #
+    #    raise InvalidTargetsProperty in case of error
+    #
+    # -----------------------------------------------------------------
+    def build_resources(targets, vios_nim_list, resources)
+      resource_hash = {}
+      selected_vios = []
+      vios_list = []
+
+      vios_list_tuples = targets.delete(' ').gsub('),(', ')(').split('(')
+      vios_list_tuples.delete_at(0) # after the split, 1rst elt is nil
+
+      unless resources.nil? || resources == 'skip'
+        # Remove the spaces added here after after the tuple lengh has beed tested
+        rs_list_tuples = resources.delete(' ').gsub('),(', ')(').gsub('(,', '( ,').gsub(',)', ', )').split('(')
+        rs_list_tuples.delete_at(0)
+        if rs_list_tuples.length != vios_list_tuples.length
+          raise InvalidTargetsProperty, "Error: Install hdisks '#{resources}' and vios target '#{targets}' must have the same number of element"
+        end
+      end
+
+      # Build targets list
+      rs_tuple_index = 0
+      vios_list_tuples.each do |vios_tuple|
+        my_tuple = vios_tuple.delete(')')
+        tuple_elts = my_tuple.split(',')
+        tuple_len = tuple_elts.length
+
+        # check targets has the form of (vios1,vios2) or (vios3)
+        if tuple_len != 1 && tuple_len != 2
+          raise InvalidTargetsProperty, "Error: Malformed vios targets '#{targets}'"
+        end
+
+        # check vios not already exists in the target list
+        if vios_list.include?(tuple_elts[0]) ||
+           (tuple_len == 2 && (vios_list.include?(tuple_elts[1]) ||
+            tuple_elts[0] == tuple_elts[1]))
+          raise InvalidTargetsProperty, "Error: Malformed vios targets, Duplicated values '#{targets}'"
+        end
+
+        # check vios is knowed by the NIM master - if not ignore it
+        if !vios_nim_list.include?(tuple_elts[0]) ||
+           tuple_len == 2 && !vios_nim_list.include?(tuple_elts[1])
+          next
+        end
+
+        if tuple_len == 2
+          vios_list.push(tuple_elts[0], tuple_elts[1])
+        else
+          vios_list.push(tuple_elts[0])
+        end
+        selected_vios.push(my_tuple)
+
+        # Handle resources list if installdisks not nil
+        next if resources.nil?
+
+        # in skip mode, just add empty hdisk for the 2 vioses
+        if resources == 'skip'
+          resource_hash[tuple_elts[0]] = ''
+          resource_hash[tuple_elts[1]] = ''
+          next
+        end
+
+        # parse the resource tuple
+        rs_tuple = rs_list_tuples[rs_tuple_index].delete(')')
+        rs_tuple_elts = rs_tuple.split(',')
+        rs_tuple_len = rs_tuple_elts.length
+        if rs_tuple_len != tuple_len
+          raise InvalidTargetsProperty, "Error: install hdsik tuple '#{rs_tuple}' and vios tuple '#{my_tuple}' must have the same number of element"
+        end
+        resource_hash[tuple_elts[0]] = rs_tuple_elts[0].delete(' ')
+        if tuple_len == 2
+          resource_hash[tuple_elts[1]] = rs_tuple_elts[1].delete(' ')
+        end
+
+        rs_tuple_index += 1
+      end
+      log_info("List of resources: #{resource_hash}")
+      resource_hash
     end
   end # module PatchMgmt
 end # module AIX
