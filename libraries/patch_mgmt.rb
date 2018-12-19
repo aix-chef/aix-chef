@@ -1212,8 +1212,10 @@ module AIX
           case st_upg
           when 0
             upgrade_status_ok = true
-            # if cluster defined - check the if the clsuter is restarted if exist
-            if nim_vios[vios]['ssp_id'] != 'none'
+            sleep 120
+            # if cluster defined - check  if the cluster is started if exists
+            log_debug("--- Check if cluster ssp_id: '#{nim_vios[vios]['ssp_id']}'")
+            if nim_vios[vios]['ssp_id'] != 'none' && nim_vios[vios]['ssp_id'] != ''
               begin
                 st_clust = get_cluster_status(nim_vios, vios)
               rescue ViosCmdError => e
@@ -2471,6 +2473,7 @@ module AIX
 
       vios_list_tuples = targets.delete(' ').gsub('),(', ')(').split('(')
       vios_list_tuples.delete_at(0) # after the split, 1rst elt is nil
+      # vios_list_tuples.delete_at(0) if vios_list_tuples.length > 1
 
       unless altdisks.nil? || altdisks == 'auto'
         # Remove the spaces added here after after the tuple lengh has beed tested

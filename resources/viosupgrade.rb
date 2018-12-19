@@ -447,7 +447,7 @@ def get_ssp_name_id(nim_vios, vios)
     end
     wait_thr.value # Process::Status object returned.
   end
-  raise ViosNoClusterFound, "Cannot find cluster id for vios='#{nim_vios[vios]['vios_ip']}': Command '#{cmd_c}' returns above error." unless exit_status.success?
+  raise ViosCmdError, "#{msg}, command: \"#{cmd_s}\" returns above error!" unless exit_status.success?
   ssp_id
 end
 
@@ -478,12 +478,12 @@ def get_vios_ssp_status_for_upgrade(nim_vios, vios_list, vios_key, targets_statu
     # vios = vios_list[0]
 
     # check if cluster defined
-    begin
-      nim_vios[vios]['ssp_id'] = get_ssp_name_id(nim_vios, vios)
-      # cluster found
+    nim_vios[vios]['ssp_id'] = get_ssp_name_id(nim_vios, vios)
+    # cluster found
+    if nim_vios[vios]['ssp_id'] != ''
       log_info("[VIOS CLUSTER ID] #{nim_vios[vios]['ssp_id']}")
-    rescue ViosNoClusterFound => e
-      msg = "No cluster found: #{e.message} => continue to upgrade"
+    else
+      msg = "No cluster found  => continue to upgrade"
       log_info(msg)
       return 0 # no cluster found => continue to upgrade
     end
@@ -1035,6 +1035,7 @@ action :upgrade do
           converge_by("\n nim: perform NIM viosupgrade for vios '#{vios}'\n") do
             begin
               put_info("Start viosupgrade for vios '#{vios}'.")
+              put_info("CMD= '#{cmd_to_run}'.")
               run_viosupgrade(vios, cmd_to_run)
             rescue ViosUpgradeError => e
               put_error(e.message)

@@ -723,7 +723,7 @@ action_list:
  * altdisk_copy: will make an alternate rootvg on an available disk
  * update: install software on VIOSes from existing NIM lpp source
  * altdisk_cleanup: to remove the altinst_rootvg
- 
+
 #### Properties
 
 - `lpp_source` - Name of NIM lpp_source resource to install
@@ -785,7 +785,7 @@ end
 ### viosupgrade
 
 Use viosupgrade to upgrade a VIOS or a couple of VIOSes by installing the specifed image from the NIM server.
-Performs the operations of backing up the virtual and logical configuration data, installing the specified image, 
+Performs the operations of backing up the virtual and logical configuration data, installing the specified image,
 and restoring the virtual and logical configuration data of the Virtual I/O Server (VIOS).
 Each action from the action list can be executed independently or together: check, altdisk_copy, validate, upgrade, altdisk_cleanup
 action_list:
@@ -794,7 +794,7 @@ action_list:
  * validate: will make a verification about upgrade operation
  * upgrade: install image on VIOSes from existing NIM mksysb iamge and restoring the virtual and logical configuration data
  * altdisk_cleanup: to remove the altinst_rootvg
- 
+
 #### Properties
 
 - `targets` - Comma separated list of single or dual VIOSes to manage in a tuple format (required)
@@ -806,7 +806,7 @@ action_list:
 - `resources` - List of configuration resources to be applied after the installation. Per VIOSes.
 - `common_resources` - List of configuration resources to be applied after the installation. For all VIOSes.
 - `preview` - (values: yes or no) (default: no) To select the install preview mode - validate operation.
-- `viosupgrade_alt_disk_copy` -(values: yes or no) (default: no) - yes to use viosupgrade command to make an alternate disk copy (altdisks propertie will be used for the disks)
+- `viosupgrade_alt_disk_copy` -(values: yes or no) (default: no) - yes to use viosupgrade command to make an alternate disk copy (altdisks property will be used for the disks)
 
 #### Actions
 
@@ -840,17 +840,16 @@ aix_viosupgrade 'viosupgrade VIOSES on alternate disks ' do
   targets '(vios1,vios1),(vios3,vios4)'
   ios_mksysb_name 'ios_1844B_72M'
   viosupgrade_type 'altdisk'
-	installdisks '(hdisk2,hdisk2),(hdisk0,hdisk4)'
+  installdisks '(hdisk2,hdisk2),(hdisk0,hdisk4)'
   common_resources 'master_net_conf'
   action_list 'validate,upgrade'
-
 end
 
 aix_viosupgrade 'viosupgrade VIOSES on current rootvg using viosupgrade for building altinst_rootvg' do
   targets '(vios1,vios1),(vios3,vios4)'
   ios_mksysb_name 'ios_1844B_72M'
   viosupgrade_type 'bosinst'
-	altdisks '(hdisk1,hdisk1),(hdisk2,hdisk2)'
+  altdisks '(hdisk1,hdisk1),(hdisk2,hdisk2)'
   common_resources 'master_net_conf'
   action_list 'validate,upgrade'
   viosupgrade_alt_disk_copy 'yes'
